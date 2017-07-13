@@ -1,0 +1,6 @@
+[package]
+name = "gdax"
+version = "0.1.0"
+authors = ["Paul Lange <palango@gmx.de>"]
+
+[dependencies]
