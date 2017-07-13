@@ -2,6 +2,7 @@ extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
+extern crate uuid;
 
 use std::fmt::Display;
 use std::str::FromStr;
@@ -9,6 +10,9 @@ use std::str::FromStr;
 use serde::de::DeserializeOwned;
 use serde_json::de as de_json;
 use serde::de::{self, Deserialize, Deserializer};
+
+
+use uuid::Uuid;
 
 const PUBLIC_API_URL: &'static str = "https://api.gdax.com";
 
@@ -50,6 +54,22 @@ pub struct Product {
     pub display_name: String,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct BookEntry {
+    #[serde(deserialize_with = "from_str")]
+    pub price: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub size: f64,
+    pub num_orders: u64
+}
+
+#[derive(Deserialize, Debug)]
+pub struct OrderBook<T> {
+    pub sequence: usize,
+    pub bids: Vec<T>,
+    pub asks: Vec<T>
+}
+
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where T: FromStr,
           T::Err: Display,
@@ -57,6 +77,12 @@ fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 {
     let s = String::deserialize(deserializer)?;
     T::from_str(&s).map_err(de::Error::custom)
+}
+
+pub enum Level {
+    Best    = 1,
+    Top50   = 2,
+    Full    = 3
 }
 
 pub struct Client {
@@ -73,6 +99,7 @@ impl Client {
     fn get_and_decode<T>(&self, url: &str) -> Result<T, Error>
         where T: DeserializeOwned
     {
+        println!("url = {:#?}", url);
         let mut res = self.http_client.get(url)?.send()?;
 
         if !res.status().is_success() {
@@ -85,6 +112,13 @@ impl Client {
     pub fn get_products(&self) -> Result<Vec<Product>, Error> {
         self.get_and_decode(&create_api_url("products"))
     }
+
+    pub fn get_best_order(&self, product: &str) -> Result<OrderBook<BookEntry>, Error> {
+        self.get_and_decode(&format!("{}/products/{}/book?level={}",
+                                     PUBLIC_API_URL,
+                                     product,
+                                     Level::Best as u8))
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +128,15 @@ mod tests {
     fn it_works() {
         let c = Client::new();
         let res = c.get_products();
+        println!("res = {:#?}", res);
+        assert!(res.is_ok());
+    }
+
+
+    #[test]
+    fn it_works2() {
+        let c = Client::new();
+        let res = c.get_best_order("ETH-USD");
         println!("res = {:#?}", res);
         assert!(res.is_ok());
     }
