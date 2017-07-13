@@ -64,6 +64,16 @@ pub struct BookEntry {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct FullBookEntry {
+    #[serde(deserialize_with = "from_str")]
+    pub price: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub size: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub order_id: Uuid
+}
+
+#[derive(Deserialize, Debug)]
 pub struct OrderBook<T> {
     pub sequence: usize,
     pub bids: Vec<T>,
@@ -119,6 +129,20 @@ impl Client {
                                      product,
                                      Level::Best as u8))
     }
+
+    pub fn get_top50_orders(&self, product: &str) -> Result<OrderBook<BookEntry>, Error> {
+        self.get_and_decode(&format!("{}/products/{}/book?level={}",
+                                     PUBLIC_API_URL,
+                                     product,
+                                     Level::Top50 as u8))
+    }
+
+    pub fn get_full_book(&self, product: &str) -> Result<OrderBook<FullBookEntry>, Error> {
+        self.get_and_decode(&format!("{}/products/{}/book?level={}",
+                                     PUBLIC_API_URL,
+                                     product,
+                                     Level::Full as u8))
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +161,20 @@ mod tests {
     fn it_works2() {
         let c = Client::new();
         let res = c.get_best_order("ETH-USD");
+        println!("res = {:#?}", res);
+        assert!(res.is_ok());
+    }
+    #[test]
+    fn it_works3() {
+        let c = Client::new();
+        let res = c.get_top50_orders("ETH-USD");
+        println!("res = {:#?}", res);
+        assert!(res.is_ok());
+    }
+    #[test]
+    fn it_works4() {
+        let c = Client::new();
+        let res = c.get_full_book("ETH-USD");
         println!("res = {:#?}", res);
         assert!(res.is_ok());
     }
