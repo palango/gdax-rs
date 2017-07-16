@@ -3,10 +3,12 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 extern crate uuid;
+extern crate chrono;
 
 use std::fmt::Display;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc, Duration};
 use serde::de::DeserializeOwned;
 use serde_json::de as de_json;
 use serde::de::{self, Deserialize, Deserializer};
@@ -80,6 +82,16 @@ pub struct OrderBook<T> {
     pub asks: Vec<T>
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Candle {
+    pub time: u64,
+    pub low: f64,
+    pub high: f64,
+    pub open: f64,
+    pub close: f64,
+    pub volume: f64
+}
+
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where T: FromStr,
           T::Err: Display,
@@ -143,38 +155,63 @@ impl Client {
                                      product,
                                      Level::Full as u8))
     }
+
+    pub fn get_historic_rates(&self,
+                          product: &str,
+                          start_time: DateTime<Utc>,
+                          end_time: DateTime<Utc>,
+                          granularity: Duration)
+        -> Result<Vec<Candle>, Error> {
+
+        self.get_and_decode(&format!("{}/products/{}/candles?start={}&end={}&granularity={}",
+                                     PUBLIC_API_URL,
+                                     product,
+                                     start_time.to_rfc3339(),
+                                     end_time.to_rfc3339(),
+                                     granularity.num_seconds()))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn it_works() {
-        let c = Client::new();
-        let res = c.get_products();
-        println!("res = {:#?}", res);
-        assert!(res.is_ok());
-    }
-
-
-    #[test]
-    fn it_works2() {
-        let c = Client::new();
-        let res = c.get_best_order("ETH-USD");
-        println!("res = {:#?}", res);
-        assert!(res.is_ok());
-    }
-    #[test]
-    fn it_works3() {
-        let c = Client::new();
-        let res = c.get_top50_orders("ETH-USD");
-        println!("res = {:#?}", res);
-        assert!(res.is_ok());
-    }
+//    #[test]
+//    fn it_works() {
+//        let c = Client::new();
+//        let res = c.get_products();
+//        println!("res = {:#?}", res);
+//        assert!(res.is_ok());
+//    }
+//
+//
+//    #[test]
+//    fn it_works2() {
+//        let c = Client::new();
+//        let res = c.get_best_order("ETH-USD");
+//        println!("res = {:#?}", res);
+//        assert!(res.is_ok());
+//    }
+//    #[test]
+//    fn it_works3() {
+//        let c = Client::new();
+//        let res = c.get_top50_orders("ETH-USD");
+//        println!("res = {:#?}", res);
+//        assert!(res.is_ok());
+//    }
+//    #[test]
+//    fn it_works4() {
+//        let c = Client::new();
+//        let res = c.get_full_book("ETH-USD");
+//        println!("res = {:#?}", res);
+//        assert!(res.is_ok());
+//    }
     #[test]
     fn it_works4() {
         let c = Client::new();
-        let res = c.get_full_book("ETH-USD");
+        let now = Utc::now();
+        let diff = Duration::seconds(200);
+        let then = now - diff;
+        let res = c.get_historic_rates("ETH-USD", now, then, Duration::seconds(1));
         println!("res = {:#?}", res);
         assert!(res.is_ok());
     }
