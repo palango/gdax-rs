@@ -1,11 +1,12 @@
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 extern crate uuid;
 extern crate chrono;
 
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc, Duration};
@@ -18,15 +19,11 @@ use uuid::Uuid;
 
 const PUBLIC_API_URL: &'static str = "https://api.gdax.com";
 
-fn create_api_url(path: &str) -> String {
-    format!("{}/{}", PUBLIC_API_URL, path)
-}
-
 #[derive(Debug)]
 pub enum Error {
     Api,
     Http(reqwest::Error),
-//    InvalidSecretKey,
+    //    InvalidSecretKey,
     Json(serde_json::Error),
 }
 
@@ -92,6 +89,92 @@ pub struct Candle {
     pub volume: f64
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Tick {
+    pub trade_id: u64,
+    #[serde(deserialize_with = "from_str")]
+    pub price: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub size: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub bid: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub ask: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub volume: f64,
+    pub time: DateTime<Utc>
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Side {
+    Buy,
+    Sell
+}
+
+impl fmt::Display for Side {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Side::Buy => write!(f, "Buy"),
+            Side::Sell => write!(f, "Sell")
+        }
+    }
+}
+
+// We manually implement Serialize for Side here
+// because the default encoding/decoding scheme that derive
+// gives us isn't the straightforward mapping unfortunately
+impl serde::Serialize for Side {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: serde::Serializer
+    {
+        match *self {
+            Side::Buy => serializer.serialize_str("buy"),
+            Side::Sell => serializer.serialize_str("sell")
+        }
+    }
+}
+
+// We manually implement Deserialize for Side here
+// because the default encoding/decoding scheme that derive
+// gives us isn't the straightforward mapping unfortunately
+impl<'de> serde::Deserialize<'de> for Side {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: serde::Deserializer<'de>
+    {
+        struct SideVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SideVisitor {
+            type Value = Side;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a Side specifier, either Buy or Sell")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where E: serde::de::Error {
+                match &*v.to_lowercase() {
+                    "buy" => Ok(Side::Buy),
+                    "sell" => Ok(Side::Sell),
+                    //                    _ => Err(E::invalid_value(serde::de::Unexpected::Str(v), &self)),
+                    _ => Err(E::custom(format!("side must be either `buy` or `sell`: {}", v))),
+                }
+            }
+        }
+        deserializer.deserialize_str(SideVisitor)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Trade {
+    pub time: DateTime<Utc>,
+    pub trade_id: u64,
+    #[serde(deserialize_with = "from_str")]
+    pub price: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub size: f64,
+    pub side: Side,
+}
+
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where T: FromStr,
           T::Err: Display,
@@ -102,9 +185,9 @@ fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 }
 
 pub enum Level {
-    Best    = 1,
-    Top50   = 2,
-    Full    = 3
+    Best = 1,
+    Top50 = 2,
+    Full = 3
 }
 
 pub struct Client {
@@ -132,7 +215,7 @@ impl Client {
     }
 
     pub fn get_products(&self) -> Result<Vec<Product>, Error> {
-        self.get_and_decode(&create_api_url("products"))
+        self.get_and_decode(&format!("{}/products", PUBLIC_API_URL))
     }
 
     pub fn get_best_order(&self, product: &str) -> Result<OrderBook<BookEntry>, Error> {
@@ -157,12 +240,11 @@ impl Client {
     }
 
     pub fn get_historic_rates(&self,
-                          product: &str,
-                          start_time: DateTime<Utc>,
-                          end_time: DateTime<Utc>,
-                          granularity: Duration)
-        -> Result<Vec<Candle>, Error> {
-
+                              product: &str,
+                              start_time: DateTime<Utc>,
+                              end_time: DateTime<Utc>,
+                              granularity: Duration)
+                              -> Result<Vec<Candle>, Error> {
         self.get_and_decode(&format!("{}/products/{}/candles?start={}&end={}&granularity={}",
                                      PUBLIC_API_URL,
                                      product,
@@ -170,48 +252,73 @@ impl Client {
                                      end_time.to_rfc3339(),
                                      granularity.num_seconds()))
     }
+
+    pub fn get_product_ticker(&self, product: &str) -> Result<Tick, Error> {
+        self.get_and_decode(&format!("{}/products/{}/ticker", PUBLIC_API_URL, product))
+    }
+
+    pub fn get_trades(&self, product: &str) -> Result<Vec<Trade>, Error> {
+        self.get_and_decode(&format!("{}/products/{}/trades", PUBLIC_API_URL, product))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    //    #[test]
+    //    fn it_works() {
+    //        let c = Client::new();
+    //        let res = c.get_products();
+    //        println!("res = {:#?}", res);
+    //        assert!(res.is_ok());
+    //    }
+    //
+    //
+    //    #[test]
+    //    fn it_works2() {
+    //        let c = Client::new();
+    //        let res = c.get_best_order("ETH-USD");
+    //        println!("res = {:#?}", res);
+    //        assert!(res.is_ok());
+    //    }
+    //    #[test]
+    //    fn it_works3() {
+    //        let c = Client::new();
+    //        let res = c.get_top50_orders("ETH-USD");
+    //        println!("res = {:#?}", res);
+    //        assert!(res.is_ok());
+    //    }
+    //        #[test]
+    //        fn it_works4() {
+    //            let c = Client::new();
+    //            let res = c.get_full_book("ETH-USD");
+    //            println!("res = {:#?}", res);
+    //            assert!(res.is_ok());
+    //        }
+    //    #[test]
+    //    fn it_works4() {
+    //        let c = Client::new();
+    //        let now = Utc::now();
+    //        let diff = Duration::seconds(200);
+    //        let then = now - diff;
+    //        let res = c.get_historic_rates("ETH-USD", now, then, Duration::seconds(1));
+    //        println!("res = {:#?}", res);
+    //        assert!(res.is_ok());
+    //    }
+
+
 //    #[test]
-//    fn it_works() {
+//    fn it_works5() {
 //        let c = Client::new();
-//        let res = c.get_products();
+//        let res = c.get_trades("ETH-USD");
 //        println!("res = {:#?}", res);
 //        assert!(res.is_ok());
 //    }
-//
-//
-//    #[test]
-//    fn it_works2() {
-//        let c = Client::new();
-//        let res = c.get_best_order("ETH-USD");
-//        println!("res = {:#?}", res);
-//        assert!(res.is_ok());
-//    }
-//    #[test]
-//    fn it_works3() {
-//        let c = Client::new();
-//        let res = c.get_top50_orders("ETH-USD");
-//        println!("res = {:#?}", res);
-//        assert!(res.is_ok());
-//    }
-//    #[test]
-//    fn it_works4() {
-//        let c = Client::new();
-//        let res = c.get_full_book("ETH-USD");
-//        println!("res = {:#?}", res);
-//        assert!(res.is_ok());
-//    }
+
     #[test]
-    fn it_works4() {
+    fn it_works6() {
         let c = Client::new();
-        let now = Utc::now();
-        let diff = Duration::seconds(200);
-        let then = now - diff;
-        let res = c.get_historic_rates("ETH-USD", now, then, Duration::seconds(1));
+        let res = c.get_product_ticker("ETH-USD");
         println!("res = {:#?}", res);
         assert!(res.is_ok());
     }
