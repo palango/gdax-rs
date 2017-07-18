@@ -190,6 +190,32 @@ pub enum Level {
     Full = 3
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Stats {
+    #[serde(deserialize_with = "from_str")]
+    pub open: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub high: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub low: f64,
+    #[serde(deserialize_with = "from_str")]
+    pub volume: f64
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Currency {
+    pub id: String,
+    pub name: String,
+    #[serde(deserialize_with = "from_str")]
+    pub min_size: f64
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Time {
+    pub iso: DateTime<Utc>,
+    pub epoch: f64
+}
+
 pub struct Client {
     http_client: reqwest::Client,
 }
@@ -260,6 +286,18 @@ impl Client {
     pub fn get_trades(&self, product: &str) -> Result<Vec<Trade>, Error> {
         self.get_and_decode(&format!("{}/products/{}/trades", PUBLIC_API_URL, product))
     }
+
+    pub fn get_24hr_stats(&self, product: &str) -> Result<Stats, Error> {
+        self.get_and_decode(&format!("{}/products/{}/stats", PUBLIC_API_URL, product))
+    }
+
+    pub fn get_currencies(&self) -> Result<Vec<Currency>, Error> {
+        self.get_and_decode(&format!("{}/currencies", PUBLIC_API_URL))
+    }
+
+    pub fn get_time(&self) -> Result<Time, Error> {
+        self.get_and_decode(&format!("{}/time", PUBLIC_API_URL))
+    }
 }
 
 #[cfg(test)]
@@ -318,7 +356,8 @@ mod tests {
     #[test]
     fn it_works6() {
         let c = Client::new();
-        let res = c.get_product_ticker("ETH-USD");
+//        let res = c.get_product_ticker("ETH-USD");
+        let res = c.get_24hr_stats("ETH-USD");
         println!("res = {:#?}", res);
         assert!(res.is_ok());
     }
